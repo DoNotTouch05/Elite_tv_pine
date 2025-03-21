@@ -1,0 +1,16 @@
+//@version=6
+indicator('ATR Bands', overlay = true)
+
+smaLength = 5
+atrPeriod = 3
+atrMultiplier = 2.5
+
+obvValue = ta.cum(volume * math.sign(ta.change(close)))
+obvSMA = ta.sma(obvValue, smaLength)
+
+atrValue = ta.atr(atrPeriod)
+atrUpper = close + atrValue * atrMultiplier
+atrLower = close - atrValue * atrMultiplier
+
+plot(atrUpper, title = 'ATR Upper Band', color = color.rgb(255, 255, 255), linewidth = 1)
+plot(atrLower, title = 'ATR Lower Band', color = color.rgb(255, 255, 255), linewidth = 1)
