@@ -1,0 +1,115 @@
+//@version=6 
+indicator('QQE_MOD and RSI', overlay = false)
+
+// RSI param
+rsiLength = input(14, title = 'RSI Length')
+smaLength = input(14, title = 'SMA Length')
+source = close
+
+// Calculate RSI
+rsiValue = ta.rsi(source, rsiLength)
+rsiSMA = ta.sma(rsiValue, smaLength)
+// Plot RSI
+plot(rsiValue, title = 'RSI', color = color.rgb(0, 140, 255), linewidth = 1)
+plot(rsiSMA, title = 'RSI SMA', color = color.rgb(255, 196, 107, 3), linewidth = 1)
+
+// Add Overbought （70）Oversold（30）
+hline(70, 'Overbought Level', color = color.red)
+hline(30, 'Oversold Level', color = color.green)
+hline(50, 'Middle Line', color = color.gray)
+
+
+group_primary = 'Primary QQE Settings'
+rsiLengthPrimary = input.int(6, title = 'RSI Length', group = group_primary)
+rsiSmoothingPrimary = input.int(5, title = 'RSI Smoothing', group = group_primary)
+qqeFactorPrimary = input.float(3.0, title = 'QQE Factor', group = group_primary)
+thresholdPrimary = input.float(3.0, title = 'Threshold', group = group_primary)
+sourcePrimary = input.source(close, title = 'RSI Source', group = group_primary)
+group_secondary = 'Secondary QQE Settings'
+rsiLengthSecondary = input.int(6, title = 'RSI Length', group = group_secondary)
+rsiSmoothingSecondary = input.int(5, title = 'RSI Smoothing', group = group_secondary)
+qqeFactorSecondary = input.float(1.61, title = 'QQE Factor', group = group_secondary)
+thresholdSecondary = input.float(3.0, title = 'Threshold', group = group_secondary)
+sourceSecondary = input.source(close, title = 'RSI Source', group = group_secondary)
+
+group_bollinger = 'Bollinger Bands Settings'
+bollingerLength = input.int(50, minval = 1, title = 'Length', group = group_bollinger, tooltip = 'The length of the Bollinger Bands calculation.')
+bollingerMultiplier = input.float(0.35, step = 0.1, minval = 0.001, maxval = 5, title = 'Multiplier', group = group_bollinger, tooltip = 'The multiplier used to calculate Bollinger Band width.')
+
+// Calculate QQE Bands
+calculateQQE(rsiLength, smoothingFactor, qqeFactor, source) =>
+    wildersLength = rsiLength * 2 - 1
+    rsi = ta.rsi(source, rsiLength)
+    smoothedRsi = ta.ema(rsi, smoothingFactor)
+    atrRsi = math.abs(smoothedRsi[1] - smoothedRsi)
+    smoothedAtrRsi = ta.ema(atrRsi, wildersLength)
+    dynamicAtrRsi = smoothedAtrRsi * qqeFactor
+
+    longBand = 0.0
+    shortBand = 0.0
+    trendDirection = 0
+
+    atrDelta = dynamicAtrRsi
+    newShortBand = smoothedRsi + atrDelta
+    newLongBand = smoothedRsi - atrDelta
+    longBand := smoothedRsi[1] > longBand[1] and smoothedRsi > longBand[1] ? math.max(longBand[1], newLongBand) : newLongBand
+    shortBand := smoothedRsi[1] < shortBand[1] and smoothedRsi < shortBand[1] ? math.min(shortBand[1], newShortBand) : newShortBand
+    longBandCross = ta.cross(longBand[1], smoothedRsi)
+
+    if ta.cross(smoothedRsi, shortBand[1])
+        trendDirection := 1
+        trendDirection
+    else if longBandCross
+        trendDirection := -1
+        trendDirection
+    else
+        trendDirection := trendDirection[1]
+        trendDirection
+
+    // Determine the trend line
+    qqeTrendLine = trendDirection == 1 ? longBand : shortBand
+    [qqeTrendLine, smoothedRsi]
+
+// Calculate Primary QQE
+[primaryQQETrendLine, primaryRSI] = calculateQQE(rsiLengthPrimary, rsiSmoothingPrimary, qqeFactorPrimary, sourcePrimary)
+
+// Calculate Secondary QQE
+[secondaryQQETrendLine, secondaryRSI] = calculateQQE(rsiLengthSecondary, rsiSmoothingSecondary, qqeFactorSecondary, sourceSecondary)
+
+bollingerBasis = ta.sma(primaryQQETrendLine - 50, bollingerLength)
+bollingerDeviation = bollingerMultiplier * ta.stdev(primaryQQETrendLine - 50, bollingerLength)
+bollingerUpper = bollingerBasis + bollingerDeviation
+bollingerLower = bollingerBasis - bollingerDeviation
+
+// Color Conditions for Primary RSI
+rsiColorPrimary = primaryRSI - 50 > bollingerUpper ? color.new(#78dfff, 0) : primaryRSI - 50 < bollingerLower ? color.new(#ff71a7, 0) : color.new(#707070, 0)
+
+// Color Conditions for Secondary RSI
+rsiColorSecondary = secondaryRSI - 50 > thresholdSecondary ? color.new(#707070, 0) : secondaryRSI - 50 < -thresholdSecondary ? color.new(#707070, 0) : na
+plot(secondaryRSI - 50, color = rsiColorSecondary, title = 'Secondary RSI Histogram', style = plot.style_columns)
+plot(secondaryRSI - 50 > thresholdSecondary and primaryRSI - 50 > bollingerUpper ? secondaryRSI - 50 : na, title = 'QQE Up Signal', style = plot.style_columns, color = #4dd5ff)
+plot(secondaryRSI - 50 < -thresholdSecondary and primaryRSI - 50 < bollingerLower ? secondaryRSI - 50 : na, title = 'QQE Down Signal', style = plot.style_columns, color = #ff73a9)
+hline(0, title = 'Zero Line', color = color.white, linestyle = hline.style_dotted)
+
+// Alerts for Zero Crosses
+alertcondition(ta.crossover(primaryRSI, 50), title = 'Primary RSI Cross Above Zero', message = 'Primary RSI crossed above zero')
+alertcondition(ta.crossunder(primaryRSI, 50), title = 'Primary RSI Cross Below Zero', message = 'Primary RSI crossed below zero')
+
+
+// MACD   (still in trouble)
+//fastLength = input(12, title = 'Fast EMA Length')
+//slowLength = input(26, title = 'Slow EMA Length')
+//signalSmoothing = input(9, title = 'Signal Smoothing')
+
+//  calculate MACD 
+//[macdLine, signalLine, _] = ta.macd(source, fastLength, slowLength, signalSmoothing)
+//macdHist = macdLine - signalLine
+
+//  Set Histogram color 
+//histoColor = macdHist > 0 ? macdHist > macdHist[1] ? color.rgb(0, 215, 143, 40) : color.rgb(217, 234, 226, 40) : macdHist < 0 ? macdHist < macdHist[1] ? color.rgb(255, 0, 0, 40) : color.rgb(240, 201, 201, 40) : na
+
+// plot MACD
+//plot(macdHist, style = plot.style_columns, color = histoColor, title = 'MACD Histogram') 
+//plot(macdLine, color = color.rgb(0, 72, 255), title = 'MACD Line', linewidth = 1)
+//plot(signalLine, color = color.rgb(255, 94, 0), title = 'Signal Line', linewidth = 1)
+//plot(0, title = 'Zero Line', color = color.white, linewidth = 1, style = plot.style_stepline)
