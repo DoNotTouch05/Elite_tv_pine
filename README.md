@@ -1,4 +1,5 @@
-# Elite_tv_code
-
+# Elite_tv_pine
+A collection of technical indicators.
 ## 2025/3/21
-Create this repositories  
+Create this repository  
+Classify indicator types
