@@ -1,0 +1,104 @@
+//@version=6
+indicator('Strategy', overlay = true)
+
+// The EMA for strategy 
+// Red line is long time frame
+// Blue line is short
+// Yellow line to do the test
+// Always use it at 5M, 15M, 30M
+
+ema3_1 = ta.ema(close, 144)
+ema3_2 = ta.ema(close, 169)
+ema3_3 = ta.ema(close, 576)
+ema3_4 = ta.ema(close, 676)
+ema3_5 = ta.ema(close, 12)
+
+transp = bar_index % 2 < 1 ? 75 : 25
+plot(ema3_1, title="EMA1", color=color.rgb(68, 149, 215, transp), linewidth=2)
+plot(ema3_2, title="EMA2", color=color.rgb(68, 149, 215, transp), linewidth=2)
+plot(ema3_3, title="EMA3", color=color.rgb(220, 57 ,30, transp), linewidth=2)
+plot(ema3_4, title="EMA4", color=color.rgb(220, 57 ,30, transp), linewidth=2)
+plot(ema3_5, title="EMA5", color=color.rgb(240, 220, 31, transp), linewidth=2)
+
+// The booling for strategy 
+// At squeeze region do nothing
+// Touching the bottom or top, and the k-bar close at centeral line 
+// Check the sub indicator
+// Always use it at 15M, 30M
+
+// Booling Group
+bb_use_ema = input(false, title = 'Use EMA for Bollinger Band')
+bb_filter = input(false, title = 'Filter Buy/Sell with Bollinger Bands')
+sqz_filter = input(false, title = 'Flter Buy/Sell with BB squeeze')
+bb_length = input.int(20, minval = 1, title = 'Bollinger Length')
+bb_source = input(close, title = 'Bollinger Source')
+bb_mult = input.float(2.0, title = 'Base Multiplier', minval = 0.5, maxval = 10)
+show_bb_fill = input.bool(true, title = "Show BB Squeeze Fill")
+
+// EMA inputs
+fast_ma_len = input.int(3, title = 'Fast EMA length', minval = 2)
+// Awesome Inputs
+nLengthSlow = input.int(34, minval = 1, title = 'Awesome Length Slow')
+nLengthFast = input.int(5, minval = 1, title = 'Awesome Length Fast')
+
+sqz_length = input.int(100, 'BB Relative Squeeze Length', minval = 5)
+sqz_threshold = input.int(50, 'BB Squeeze Threshold %', maxval = 99, step = 5)
+
+ema_1 = ta.ema(bb_source, bb_length)
+sma_1 = ta.sma(bb_source, bb_length)
+bb_basis = bb_use_ema ? ema_1 : sma_1
+fast_ma = ta.ema(bb_source, fast_ma_len)
+
+// Deviation
+dev = ta.stdev(bb_source, bb_length)
+bb_dev = bb_mult * dev
+// Upper bands
+bb_upper = bb_basis + bb_dev
+// Lower Bands
+bb_lower = bb_basis - bb_dev
+
+// Calculate Awesome Oscillator
+xSMA1_hl2 = ta.sma(hl2, nLengthFast)
+xSMA2_hl2 = ta.sma(hl2, nLengthSlow)
+xSMA1_SMA2 = xSMA1_hl2 - xSMA2_hl2
+// Calculate direction of AO
+AO = xSMA1_SMA2 >= 0 ? xSMA1_SMA2 > xSMA1_SMA2[1] ? 1 : 2 : xSMA1_SMA2 > xSMA1_SMA2[1] ? -1 : -2
+// Calculate BB spread and average spread
+spread = bb_upper - bb_lower
+avgspread = ta.sma(spread, sqz_length)
+
+// Calculate BB relative %width for Squeeze indication
+bb_squeeze = spread / avgspread * 100
+
+// Calculate Upper and Lower band painting offsets based on 50% of atr.
+bb_offset = ta.atr(14) * 0.5
+bb_sqz_upper = bb_upper + bb_offset
+bb_sqz_lower = bb_lower - bb_offset
+
+// Plot BB basis
+plot(bb_basis, title = 'Basis Line', color = color.new(#9452ff, 43), linewidth = 2)
+// plot BB upper and lower bands
+ubi = plot(bb_upper, title = 'Upper Band Inner', color = color.new(#2195f3, 100), linewidth = 1)
+lbi = plot(bb_lower, title = 'Lower Band Inner', color = color.new(#2195f3, 100), linewidth = 1)
+
+// Indicate BB squeeze based on threshold.
+usqzi = plot(bb_sqz_upper, 'Hide Sqz Upper', color = color.new(#2195f3, 100), linewidth = 1)
+lsqzi = plot(bb_sqz_lower, 'Hide Sqz Lower', color = color.new(#2195f3, 100), linewidth = 1)
+fillColor = show_bb_fill ? (bb_squeeze > sqz_threshold ? color.rgb(232, 217, 217, 75) : color.rgb(0, 70, 128)) : na
+fill(ubi, usqzi, color = fillColor)
+fill(lbi, lsqzi, color = fillColor)
+
+// ATR for 15M strategy
+// Checking the divergence for k-bar
+// SL put at the ATR edge
+
+atrPeriod = 3
+atrMultiplier = 2.5
+
+obvValue = ta.cum(volume * math.sign(ta.change(close)))
+atrValue = ta.atr(atrPeriod)
+atrUpper = close + atrValue * atrMultiplier
+atrLower = close - atrValue * atrMultiplier
+
+plot(atrUpper, title = 'ATR Upper Band', color = color.rgb(255, 255, 255), linewidth = 1)
+plot(atrLower, title = 'ATR Lower Band', color = color.rgb(255, 255, 255), linewidth = 1)
